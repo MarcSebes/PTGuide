@@ -28,7 +28,6 @@ const EXERCISES = [
   },
 ];
 
-const PREP_COUNTDOWN = 3;
 const RING_CIRCUMFERENCE = 2 * Math.PI * 52;
 
 const elements = {
@@ -80,7 +79,6 @@ function createInitialState() {
     endTime: null,
     remainingSeconds: null,
     lastBeepSecond: null,
-    prepareCompleteAction: null,
     timedCompleteAction: null,
     programComplete: false,
   };
@@ -144,11 +142,6 @@ function render() {
     updateRing(0);
   }
 
-  if (state.phase === "prepare") {
-    elements.stepKicker.textContent = "Get ready";
-    elements.countdownCaption.textContent = "Starting in";
-  }
-
   if (state.phase === "active") {
     elements.stepKicker.textContent = exercise.type === "timed" ? "Exercise in progress" : "Exercise";
     elements.countdownCaption.textContent = exercise.activeLabel;
@@ -178,7 +171,7 @@ function render() {
 }
 
 function canPause() {
-  return state.started && !state.paused && ["prepare", "active", "rest", "manual"].includes(state.phase);
+  return state.started && !state.paused && ["active", "rest", "manual"].includes(state.phase);
 }
 
 function startCurrentExercise() {
@@ -187,7 +180,7 @@ function startCurrentExercise() {
   }
 
   state.started = true;
-  startPrepareCountdown(beginExercisePhase);
+  beginExercisePhase();
 }
 
 function beginExercisePhase() {
@@ -211,9 +204,7 @@ function finishExercisePhase() {
   const moreSetsRemain = state.setIndex < exercise.sets - 1;
 
   if (moreSetsRemain && exercise.rest > 0) {
-    startPrepareCountdown(() => {
-      startTimedPhase("rest", exercise.rest, "Rest", finishRestPhase);
-    });
+    startTimedPhase("rest", exercise.rest, "Rest", finishRestPhase);
     return;
   }
 
@@ -229,7 +220,7 @@ function advanceAfterSet() {
 
   if (state.setIndex < exercise.sets - 1) {
     state.setIndex += 1;
-    startPrepareCountdown(beginExercisePhase);
+    beginExercisePhase();
     return;
   }
 
@@ -245,7 +236,6 @@ function moveToNextExercise() {
   state.remainingSeconds = null;
   state.endTime = null;
   state.lastBeepSecond = null;
-  state.prepareCompleteAction = null;
   state.timedCompleteAction = null;
   clearTimer();
 
@@ -265,42 +255,30 @@ function handleManualCompletion() {
   moveToNextExercise();
 }
 
-function startPrepareCountdown(onComplete) {
-  clearTimer();
-  state.phase = "prepare";
-  state.phaseLabel = "Countdown";
-  state.paused = false;
-  state.prepareCompleteAction = onComplete;
-  state.timedCompleteAction = null;
-  state.lastBeepSecond = null;
-  runCountdown(PREP_COUNTDOWN, onComplete);
-}
-
 function startTimedPhase(phase, seconds, label, onComplete) {
   clearTimer();
   state.phase = phase;
   state.phaseLabel = label;
   state.paused = false;
   state.remainingSeconds = seconds;
-  state.prepareCompleteAction = null;
   state.timedCompleteAction = onComplete;
   state.lastBeepSecond = null;
-  runCountdown(seconds, onComplete);
+  runCountdown(seconds, onComplete, true);
 }
 
-function runCountdown(seconds, onComplete) {
+function runCountdown(seconds, onComplete, beepLastThree = false) {
   state.endTime = Date.now() + seconds * 1000;
-  tickCountdown(seconds, seconds, onComplete);
+  tickCountdown(seconds, seconds, onComplete, beepLastThree);
 }
 
-function tickCountdown(totalSeconds, displayedSeconds, onComplete) {
+function tickCountdown(totalSeconds, displayedSeconds, onComplete, beepLastThree) {
   clearTimer();
 
   state.remainingSeconds = displayedSeconds;
   updateCountdownText(displayedSeconds);
   updateRing(totalSeconds === 0 ? 1 : 1 - displayedSeconds / totalSeconds);
 
-  if (displayedSeconds <= 3 && displayedSeconds > 0 && state.lastBeepSecond !== displayedSeconds) {
+  if (beepLastThree && displayedSeconds <= 3 && displayedSeconds > 0 && state.lastBeepSecond !== displayedSeconds) {
     state.lastBeepSecond = displayedSeconds;
     beep();
   }
@@ -316,7 +294,7 @@ function tickCountdown(totalSeconds, displayedSeconds, onComplete) {
   state.timerId = window.setTimeout(() => {
     const millisLeft = Math.max(0, state.endTime - Date.now());
     const nextDisplayed = Math.max(0, Math.ceil(millisLeft / 1000));
-    tickCountdown(totalSeconds, nextDisplayed, onComplete);
+    tickCountdown(totalSeconds, nextDisplayed, onComplete, beepLastThree);
   }, 200);
 }
 
@@ -340,12 +318,7 @@ function resumeFlow() {
 
   state.paused = false;
 
-  if (state.phase === "prepare") {
-    runCountdown(
-      state.remainingSeconds ?? PREP_COUNTDOWN,
-      state.prepareCompleteAction ?? beginExercisePhase,
-    );
-  } else if (state.phase === "active") {
+  if (state.phase === "active") {
     const exercise = EXERCISES[state.exerciseIndex];
     startTimedPhase(
       "active",
@@ -375,11 +348,6 @@ function clearTimer() {
 }
 
 function updateCountdownText(seconds) {
-  if (state.phase === "prepare") {
-    elements.countdownValue.textContent = `${seconds}`;
-    return;
-  }
-
   if (state.phase === "active" || state.phase === "rest") {
     elements.countdownValue.textContent = formatTime(seconds);
   }
