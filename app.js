@@ -174,11 +174,12 @@ function canPause() {
   return state.started && !state.paused && ["active", "rest", "manual"].includes(state.phase);
 }
 
-function startCurrentExercise() {
+async function startCurrentExercise() {
   if (state.programComplete || state.phase !== "idle") {
     return;
   }
 
+  await primeAudio();
   state.started = true;
   beginExercisePhase();
 }
@@ -372,12 +373,8 @@ function updateRing(progress) {
 
 function beep() {
   try {
-    if (!audioContextState.ctx) {
-      audioContextState.ctx = new window.AudioContext();
-    }
-
-    if (audioContextState.ctx.state === "suspended") {
-      audioContextState.ctx.resume();
+    if (!audioContextState.ctx || audioContextState.ctx.state !== "running") {
+      return;
     }
 
     const oscillator = audioContextState.ctx.createOscillator();
@@ -393,6 +390,43 @@ function beep() {
     oscillator.stop(now + 0.12);
   } catch (error) {
     console.warn("Audio unavailable", error);
+  }
+}
+
+async function primeAudio() {
+  try {
+    if (!audioContextState.ctx) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        return;
+      }
+      audioContextState.ctx = new AudioContextClass();
+    }
+
+    if (audioContextState.ctx.state === "suspended") {
+      await audioContextState.ctx.resume();
+    }
+
+    if (audioContextState.ctx.state !== "running") {
+      return;
+    }
+
+    const oscillator = audioContextState.ctx.createOscillator();
+    const gain = audioContextState.ctx.createGain();
+    const now = audioContextState.ctx.currentTime;
+
+    oscillator.type = "sine";
+    oscillator.frequency.value = 440;
+    gain.gain.setValueAtTime(0.00001, now);
+    gain.gain.linearRampToValueAtTime(0.0001, now + 0.01);
+    gain.gain.linearRampToValueAtTime(0.00001, now + 0.03);
+
+    oscillator.connect(gain);
+    gain.connect(audioContextState.ctx.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.03);
+  } catch (error) {
+    console.warn("Audio priming unavailable", error);
   }
 }
 
