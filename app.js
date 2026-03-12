@@ -179,7 +179,7 @@ async function startCurrentExercise() {
     return;
   }
 
-  await primeAudio();
+  await unlockAudio();
   state.started = true;
   beginExercisePhase();
 }
@@ -373,60 +373,71 @@ function updateRing(progress) {
 
 function beep() {
   try {
-    if (!audioContextState.ctx || audioContextState.ctx.state !== "running") {
+    const ctx = getAudioContext();
+    if (!ctx || ctx.state !== "running") {
       return;
     }
 
-    const oscillator = audioContextState.ctx.createOscillator();
-    const gain = audioContextState.ctx.createGain();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+
     oscillator.type = "sine";
     oscillator.frequency.value = 880;
-    gain.gain.value = 0.02;
     oscillator.connect(gain);
-    gain.connect(audioContextState.ctx.destination);
+    gain.connect(ctx.destination);
 
-    const now = audioContextState.ctx.currentTime;
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
     oscillator.start(now);
-    oscillator.stop(now + 0.12);
+    oscillator.stop(now + 0.1);
   } catch (error) {
     console.warn("Audio unavailable", error);
   }
 }
 
-async function primeAudio() {
+function getAudioContext() {
+  if (!audioContextState.ctx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      return null;
+    }
+    audioContextState.ctx = new AudioContextClass();
+  }
+
+  return audioContextState.ctx;
+}
+
+async function unlockAudio() {
   try {
-    if (!audioContextState.ctx) {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) {
-        return;
-      }
-      audioContextState.ctx = new AudioContextClass();
-    }
-
-    if (audioContextState.ctx.state === "suspended") {
-      await audioContextState.ctx.resume();
-    }
-
-    if (audioContextState.ctx.state !== "running") {
+    const ctx = getAudioContext();
+    if (!ctx) {
       return;
     }
 
-    const oscillator = audioContextState.ctx.createOscillator();
-    const gain = audioContextState.ctx.createGain();
-    const now = audioContextState.ctx.currentTime;
+    if (ctx.state === "suspended") {
+      await ctx.resume();
+    }
+
+    if (ctx.state !== "running") {
+      return;
+    }
+
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
 
     oscillator.type = "sine";
-    oscillator.frequency.value = 440;
-    gain.gain.setValueAtTime(0.00001, now);
-    gain.gain.linearRampToValueAtTime(0.0001, now + 0.01);
-    gain.gain.linearRampToValueAtTime(0.00001, now + 0.03);
+    oscillator.frequency.value = 880;
+    gain.gain.setValueAtTime(0.04, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
     oscillator.connect(gain);
-    gain.connect(audioContextState.ctx.destination);
+    gain.connect(ctx.destination);
     oscillator.start(now);
-    oscillator.stop(now + 0.03);
+    oscillator.stop(now + 0.05);
   } catch (error) {
-    console.warn("Audio priming unavailable", error);
+    console.warn("Audio unlock unavailable", error);
   }
 }
 
