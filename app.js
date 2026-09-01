@@ -1,5 +1,35 @@
 const EXERCISES = [
   {
+    name: "L Holds",
+    detail: "30 second hold, 30 second rest, 4 sets",
+    type: "timed",
+    activeLabel: "Hold",
+    duration: 30,
+    sets: 4,
+    rest: 30,
+  },
+  {
+    name: "Clamshell Holds (Light Band)",
+    detail: "30 second hold, 30 second rest, 4 sets",
+    type: "timed",
+    activeLabel: "Hold",
+    duration: 30,
+    sets: 4,
+    rest: 30,
+  },
+  {
+    name: "Side-lying Hip Abduction",
+    detail: "30 seconds, 30 second rest, 3 sets",
+    type: "timed",
+    activeLabel: "Stretch",
+    duration: 30,
+    sets: 3,
+    rest: 30,
+  },
+];
+
+const EXERCISES2 = [
+  {
     name: "Wall Sits",
     detail: "45 second hold, 1 minute rest, 5 sets",
     type: "timed",
