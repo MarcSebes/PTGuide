@@ -1,4 +1,6 @@
-const EXERCISES = [
+const STORAGE_KEY = "ptGuideProgram";
+
+const DEFAULT_EXERCISES = [
   {
     name: "L Holds",
     detail: "30 second hold, 30 second rest, 4 sets",
@@ -28,36 +30,6 @@ const EXERCISES = [
   },
 ];
 
-const EXERCISES2 = [
-  {
-    name: "Wall Sits",
-    detail: "45 second hold, 1 minute rest, 5 sets",
-    type: "timed",
-    activeLabel: "Hold",
-    duration: 45,
-    sets: 5,
-    rest: 60,
-  },
-  {
-    name: "Heel Slides",
-    detail: "15 reps, 1 set",
-    type: "manual",
-    activeLabel: "Reps",
-    reps: 15,
-    sets: 1,
-    rest: 0,
-  },
-  {
-    name: "Hamstring Stretch",
-    detail: "30 seconds, 30 second rest, 3 sets",
-    type: "timed",
-    activeLabel: "Stretch",
-    duration: 30,
-    sets: 3,
-    rest: 30,
-  },
-];
-
 const RING_CIRCUMFERENCE = 2 * Math.PI * 52;
 
 const elements = {
@@ -78,12 +50,27 @@ const elements = {
   exerciseList: document.getElementById("exercise-list"),
   ringProgress: document.getElementById("ring-progress"),
   confettiLayer: document.getElementById("confetti-layer"),
+
+  editProgramButton: document.getElementById("edit-program-button"),
+  editModal: document.getElementById("edit-modal"),
+  closeModalButton: document.getElementById("close-modal-button"),
+  cancelEditButton: document.getElementById("cancel-edit-button"),
+  modeQuickButton: document.getElementById("mode-quick-button"),
+  modeFormButton: document.getElementById("mode-form-button"),
+  quickMode: document.getElementById("quick-mode"),
+  formMode: document.getElementById("form-mode"),
+  quickTextarea: document.getElementById("quick-textarea"),
+  formRows: document.getElementById("form-rows"),
+  addRowButton: document.getElementById("add-row-button"),
+  saveProgramButton: document.getElementById("save-program-button"),
+  editError: document.getElementById("edit-error"),
 };
 
 const audioContextState = {
   ctx: null,
 };
 
+let EXERCISES = loadProgram();
 let state = createInitialState();
 
 elements.ringProgress.style.strokeDasharray = `${RING_CIRCUMFERENCE}`;
@@ -96,6 +83,14 @@ elements.pauseButton.addEventListener("click", pauseFlow);
 elements.resumeButton.addEventListener("click", resumeFlow);
 elements.resetButton.addEventListener("click", resetApp);
 elements.completeSetButton.addEventListener("click", handleManualCompletion);
+
+elements.editProgramButton.addEventListener("click", openEditModal);
+elements.closeModalButton.addEventListener("click", closeEditModal);
+elements.cancelEditButton.addEventListener("click", closeEditModal);
+elements.modeQuickButton.addEventListener("click", () => switchEditMode("quick"));
+elements.modeFormButton.addEventListener("click", () => switchEditMode("form"));
+elements.addRowButton.addEventListener("click", () => addFormRow());
+elements.saveProgramButton.addEventListener("click", handleSaveProgram);
 
 function createInitialState() {
   return {
@@ -114,6 +109,36 @@ function createInitialState() {
   };
 }
 
+/* ---------------- Program storage ---------------- */
+
+function loadProgram() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_EXERCISES;
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+  } catch (error) {
+    console.warn("Could not load saved program, using default.", error);
+  }
+  return DEFAULT_EXERCISES;
+}
+
+function saveProgram(newExercises) {
+  EXERCISES = newExercises;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(newExercises));
+  } catch (error) {
+    console.warn("Could not save program to this browser.", error);
+  }
+  resetApp();
+}
+
+/* ---------------- Rendering ---------------- */
+
 function renderExerciseList() {
   elements.exerciseList.innerHTML = EXERCISES.map((exercise, index) => {
     const statusClass = index < state.exerciseIndex
@@ -126,8 +151,8 @@ function renderExerciseList() {
       <article class="exercise-item ${statusClass}">
         <div class="exercise-badge">${index + 1}</div>
         <div class="exercise-copy">
-          <strong>${exercise.name}</strong>
-          <span>${exercise.detail}</span>
+          <strong>${escapeHtml(exercise.name)}</strong>
+          <span>${escapeHtml(exercise.detail)}</span>
         </div>
       </article>
     `;
@@ -193,6 +218,7 @@ function render() {
     elements.phaseLabel.textContent = "Paused";
   }
 
+  elements.manualPanel.querySelector("p").textContent = `${exercise.name} ${exercise.reps === 1 ? "is" : "are"} reps-based.`;
   elements.manualPanel.classList.toggle("hidden", !isManualActive);
   elements.completeSetButton.disabled = isPaused;
   elements.startButton.classList.toggle("hidden", state.phase !== "idle");
@@ -491,4 +517,306 @@ function launchConfetti() {
   window.setTimeout(() => {
     elements.confettiLayer.innerHTML = "";
   }, 4500);
+}
+
+/* ---------------- Edit-program modal ---------------- */
+
+function openEditModal() {
+  elements.quickTextarea.value = EXERCISES
+    .map((exercise) => `${exercise.name}, ${exercise.detail}`)
+    .join("\n");
+
+  elements.formRows.innerHTML = "";
+  EXERCISES.forEach((exercise) => addFormRow(exercise));
+
+  hideEditError();
+  switchEditMode("form");
+  elements.editModal.classList.remove("hidden");
+}
+
+function closeEditModal() {
+  elements.editModal.classList.add("hidden");
+}
+
+function switchEditMode(mode) {
+  const isQuick = mode === "quick";
+  elements.quickMode.classList.toggle("hidden", !isQuick);
+  elements.formMode.classList.toggle("hidden", isQuick);
+  elements.modeQuickButton.classList.toggle("active", isQuick);
+  elements.modeFormButton.classList.toggle("active", !isQuick);
+}
+
+function showEditError(message) {
+  elements.editError.textContent = message;
+  elements.editError.classList.remove("hidden");
+}
+
+function hideEditError() {
+  elements.editError.textContent = "";
+  elements.editError.classList.add("hidden");
+}
+
+function handleSaveProgram() {
+  const isQuickMode = !elements.quickMode.classList.contains("hidden");
+  const { exercises, errors } = isQuickMode
+    ? parseQuickText(elements.quickTextarea.value)
+    : collectFormExercises();
+
+  if (errors.length > 0) {
+    showEditError(errors.join(" — "));
+    return;
+  }
+
+  if (exercises.length === 0) {
+    showEditError("Add at least one exercise before saving.");
+    return;
+  }
+
+  const finalized = exercises.map((exercise) => ({
+    ...exercise,
+    detail: buildDetailText(exercise),
+  }));
+
+  saveProgram(finalized);
+  closeEditModal();
+}
+
+/* ---- Quick-text mode ---- */
+
+function parseQuickText(text) {
+  const lines = text.split("\n");
+  const exercises = [];
+  const errors = [];
+
+  lines.forEach((rawLine, index) => {
+    const line = rawLine.trim();
+    if (!line) {
+      return;
+    }
+
+    const parsed = parseExerciseLine(line);
+    if (!parsed) {
+      errors.push(`Line ${index + 1}: couldn't find a hold time or rep count`);
+      return;
+    }
+
+    exercises.push(parsed);
+  });
+
+  return { exercises, errors };
+}
+
+const TIME_UNIT = "(?:seconds|second|secs|sec|s|minutes|minute|mins|min|m)";
+
+function parseExerciseLine(line) {
+  const firstComma = line.indexOf(",");
+  const name = (firstComma === -1 ? line : line.slice(0, firstComma)).trim();
+  const rest = firstComma === -1 ? "" : line.slice(firstComma + 1);
+
+  if (!name) {
+    return null;
+  }
+
+  const setsMatch = rest.match(/(\d+)\s*sets?/i);
+  const sets = setsMatch ? Math.max(1, parseInt(setsMatch[1], 10)) : 1;
+
+  const restRegex = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${TIME_UNIT})\\b[^,]*\\brest`, "i");
+  const restMatch = rest.match(restRegex);
+  const restSeconds = restMatch ? timeToSeconds(restMatch[1], restMatch[2]) : 0;
+
+  const repsMatch = rest.match(/(\d+)\s*reps?\b/i);
+  const reps = repsMatch ? parseInt(repsMatch[1], 10) : null;
+
+  let duration = null;
+  let activeLabel = "Hold";
+  const timeRegex = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${TIME_UNIT})\\b([^,]*)`, "gi");
+  const timeMatches = [...rest.matchAll(timeRegex)];
+
+  for (const match of timeMatches) {
+    const context = match[3] || "";
+    if (/rest/i.test(context)) {
+      continue;
+    }
+    duration = timeToSeconds(match[1], match[2]);
+    break;
+  }
+
+  if (duration != null && /stretch/i.test(line)) {
+    activeLabel = "Stretch";
+  }
+
+  if (duration == null && reps == null) {
+    return null;
+  }
+
+  if (duration != null) {
+    return {
+      name,
+      type: "timed",
+      activeLabel,
+      duration,
+      sets,
+      rest: restSeconds,
+      detail: "",
+    };
+  }
+
+  return {
+    name,
+    type: "manual",
+    activeLabel: "Reps",
+    reps,
+    sets,
+    rest: 0,
+    detail: "",
+  };
+}
+
+function timeToSeconds(numString, unit) {
+  const value = parseFloat(numString);
+  if (/^m/i.test(unit)) {
+    return Math.round(value * 60);
+  }
+  return Math.round(value);
+}
+
+/* ---- Form mode ---- */
+
+function addFormRow(exercise) {
+  const row = document.createElement("div");
+  row.className = "form-row";
+  row.innerHTML = `
+    <input type="text" class="row-name" placeholder="Exercise name" value="${exercise ? escapeHtml(exercise.name) : ""}" />
+    <div class="row-line">
+      <select class="row-type">
+        <option value="timed">Timed hold</option>
+        <option value="manual">Reps</option>
+      </select>
+      <input type="number" class="row-duration" placeholder="Hold sec" min="1" value="${exercise && exercise.type === "timed" ? exercise.duration : ""}" />
+      <input type="number" class="row-reps hidden" placeholder="Reps" min="1" value="${exercise && exercise.type === "manual" ? exercise.reps : ""}" />
+    </div>
+    <div class="row-line">
+      <input type="number" class="row-sets" placeholder="Sets" min="1" value="${exercise ? exercise.sets : 1}" />
+      <input type="number" class="row-rest" placeholder="Rest sec" min="0" value="${exercise && exercise.rest ? exercise.rest : 0}" />
+      <button type="button" class="row-remove">Remove</button>
+    </div>
+  `;
+
+  const typeSelect = row.querySelector(".row-type");
+  const durationInput = row.querySelector(".row-duration");
+  const repsInput = row.querySelector(".row-reps");
+
+  if (exercise) {
+    typeSelect.value = exercise.type;
+  }
+
+  const syncTypeVisibility = () => {
+    const isManual = typeSelect.value === "manual";
+    durationInput.classList.toggle("hidden", isManual);
+    repsInput.classList.toggle("hidden", !isManual);
+  };
+
+  syncTypeVisibility();
+  typeSelect.addEventListener("change", syncTypeVisibility);
+
+  row.querySelector(".row-remove").addEventListener("click", () => {
+    row.remove();
+  });
+
+  elements.formRows.appendChild(row);
+}
+
+function collectFormExercises() {
+  const rows = Array.from(elements.formRows.querySelectorAll(".form-row"));
+  const exercises = [];
+  const errors = [];
+
+  rows.forEach((row, index) => {
+    const name = row.querySelector(".row-name").value.trim();
+    const type = row.querySelector(".row-type").value;
+    const durationVal = row.querySelector(".row-duration").value;
+    const repsVal = row.querySelector(".row-reps").value;
+    const setsVal = row.querySelector(".row-sets").value;
+    const restVal = row.querySelector(".row-rest").value;
+
+    if (!name) {
+      errors.push(`Row ${index + 1}: name is required`);
+      return;
+    }
+
+    const sets = Math.max(1, parseInt(setsVal, 10) || 1);
+
+    if (type === "manual") {
+      const reps = parseInt(repsVal, 10);
+      if (!reps || reps <= 0) {
+        errors.push(`${name}: enter a rep count`);
+        return;
+      }
+      exercises.push({
+        name,
+        type: "manual",
+        activeLabel: "Reps",
+        reps,
+        sets,
+        rest: 0,
+        detail: "",
+      });
+      return;
+    }
+
+    const duration = parseInt(durationVal, 10);
+    if (!duration || duration <= 0) {
+      errors.push(`${name}: enter a hold time`);
+      return;
+    }
+    const rest = Math.max(0, parseInt(restVal, 10) || 0);
+    exercises.push({
+      name,
+      type: "timed",
+      activeLabel: "Hold",
+      duration,
+      sets,
+      rest,
+      detail: "",
+    });
+  });
+
+  return { exercises, errors };
+}
+
+/* ---- Shared helpers ---- */
+
+function buildDetailText(exercise) {
+  if (exercise.type === "manual") {
+    return `${exercise.reps} reps, ${pluralize(exercise.sets, "set")}`;
+  }
+
+  const durationText = formatDurationLabel(exercise.duration);
+  const label = (exercise.activeLabel || "Hold").toLowerCase();
+  const restText = exercise.rest > 0 ? `, ${formatDurationLabel(exercise.rest)} rest` : "";
+
+  return `${durationText} ${label}${restText}, ${pluralize(exercise.sets, "set")}`;
+}
+
+function formatDurationLabel(totalSeconds) {
+  if (totalSeconds >= 60 && totalSeconds % 60 === 0) {
+    const mins = totalSeconds / 60;
+    return `${mins} ${pluralize(mins, "minute", true)}`;
+  }
+  return `${totalSeconds} ${pluralize(totalSeconds, "second", true)}`;
+}
+
+function pluralize(count, noun, wordOnly = false) {
+  const word = count === 1 ? noun : `${noun}s`;
+  return wordOnly ? word : `${count} ${word}`;
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[ch]));
 }

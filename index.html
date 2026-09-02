@@ -74,13 +74,55 @@
           </article>
 
           <section class="program-list">
-            <h3>Program</h3>
+            <div class="program-list-header">
+              <h3>Program</h3>
+              <button id="edit-program-button" class="link-button">Edit program</button>
+            </div>
             <div id="exercise-list"></div>
           </section>
         </section>
       </main>
 
       <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
+
+      <div id="edit-modal" class="modal-overlay hidden">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+          <div class="modal-header">
+            <h3 id="edit-modal-title">Edit program</h3>
+            <button id="close-modal-button" class="icon-button" aria-label="Close">&times;</button>
+          </div>
+
+          <div class="mode-toggle">
+            <button id="mode-quick-button" class="mode-button" type="button">Quick text</button>
+            <button id="mode-form-button" class="mode-button active" type="button">Form</button>
+          </div>
+
+          <div id="quick-mode" class="edit-mode hidden">
+            <p class="mode-hint">
+              One exercise per line: name, then hold or reps, rest, and sets — for example
+              "Wall Sits, 45 second hold, 1 minute rest, 5 sets" or "Heel Slides, 15 reps, 1 set".
+            </p>
+            <textarea
+              id="quick-textarea"
+              class="quick-textarea"
+              rows="8"
+              placeholder="Wall Sits, 45 second hold, 1 minute rest, 5 sets&#10;Heel Slides, 15 reps, 1 set"
+            ></textarea>
+          </div>
+
+          <div id="form-mode" class="edit-mode">
+            <div id="form-rows" class="form-rows"></div>
+            <button id="add-row-button" class="ghost-button" type="button">+ Add exercise</button>
+          </div>
+
+          <p id="edit-error" class="edit-error hidden"></p>
+
+          <div class="modal-actions">
+            <button id="save-program-button" class="primary-button" type="button">Save program</button>
+            <button id="cancel-edit-button" class="ghost-button" type="button">Cancel</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="./app.js"></script>
